@@ -5,6 +5,7 @@ Shader "Weapon/Hatching"
     Properties
     {
         _Color ("Color", Color) = (1,1,1,1)
+        _Stipple ("Stipple", Float) = 1
         _Hatch0 ("Hatch Tex 0", 2D) = "white" {}
         _Hatch1 ("Hatch Tex 1", 2D) = "white" {}
         _Hatch2 ("Hatch Tex 2", 2D) = "white" {}
@@ -37,6 +38,7 @@ Shader "Weapon/Hatching"
             sampler2D _Hatch5;
             float _TileFactor;
             float4 _Color;
+            float _Stipple;
 
             struct a2v{
                 float4 vertex : POSITION;
@@ -49,8 +51,9 @@ Shader "Weapon/Hatching"
                 float2 uv : TEXCOORD0;
                 fixed3 hatchWeight0 : TEXCOORD1;
                 fixed3 hatchWeight1 : TEXCOORD2;
-                float3 worldPos : TEXCOORD3;
-                SHADOW_COORDS(4)
+                float4 worldPos : TEXCOORD3;
+                float4 screenPos : TEXCOORD4;
+                SHADOW_COORDS(5)
             };
 
             v2f vert(a2v v){
@@ -85,12 +88,25 @@ Shader "Weapon/Hatching"
                 else if(hatchFactor > 1.0){ o.hatchWeight1.x = hatchFactor - 1.0; o.hatchWeight1.y = 1.0 - o.hatchWeight1.x; }
                 else{ o.hatchWeight1.y = hatchFactor; o.hatchWeight1.z = 1.0 - o.hatchWeight1.y; }
 
-                o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
+                o.worldPos = mul(unity_ObjectToWorld, v.vertex);
+                o.screenPos = ComputeScreenPos(o.pos);
                 TRANSFER_SHADOW(o);
                 return o;
             }
 
             fixed4 frag(v2f i) : SV_TARGET{
+                float4x4 thresholdMatrix =
+                {  
+                    1.0 / 17.0,  9.0 / 17.0,  3.0 / 17.0, 11.0 / 17.0,
+                    13.0 / 17.0,  5.0 / 17.0, 15.0 / 17.0,  7.0 / 17.0,
+                    4.0 / 17.0, 12.0 / 17.0,  2.0 / 17.0, 10.0 / 17.0,
+                    16.0 / 17.0,  8.0 / 17.0, 14.0 / 17.0,  6.0 / 17.0
+                };
+                float4x4 _RowAccess = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+                float2 pos = i.screenPos.xy / i.screenPos.w;
+                pos *= _ScreenParams.xy;
+                clip(_Stipple - thresholdMatrix[fmod(pos.x, 4)] * _RowAccess[fmod(pos.y, 4)]);
+
                 fixed4 t0 = tex2D(_Hatch0, i.uv) * i.hatchWeight0.x;
                 fixed4 t1 = tex2D(_Hatch1, i.uv) * i.hatchWeight0.y;
                 fixed4 t2 = tex2D(_Hatch2, i.uv) * i.hatchWeight0.z;
